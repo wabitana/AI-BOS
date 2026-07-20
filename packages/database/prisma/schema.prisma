@@ -1,0 +1,424 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --------------------------------------
+// Users & Authentication
+// --------------------------------------
+model User {
+  id            String    @id @default(uuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  teamMembers   TeamMember[]
+  auditLogs     AuditLog[]     @relation("ActorLogs")
+  notifications Notification[]
+}
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --------------------------------------
+// Multi-Tenancy (Organizations & Workspaces)
+// --------------------------------------
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("FREE")
+  status    String   @default("ACTIVE")
+  timezone  String   @default("UTC")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  workspaces  Workspace[]
+  teams       Team[]
+  memories    Memory[]
+  auditLogs   AuditLog[]
+  settings    OrganizationSettings?
+  workflows   Workflow[]
+  agents      Agent[]
+  agentExecutions AgentExecution[]
+  conversations Conversation[]
+  providerConnections ProviderConnection[]
+  toolUsageLogs       ToolUsageLog[]
+}
+
+model Membership {
+  id             String @id @default(uuid())
+  organizationId String
+  userId         String
+  role           String @default("MEMBER") // OWNER, ADMIN, MANAGER, MEMBER, VIEWER
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+}
+
+model Workspace {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  settings     WorkspaceSettings?
+  auditLogs    AuditLog[]
+  workflows    Workflow[]
+  agents       Agent[]
+  agentExecutions AgentExecution[]
+  conversations Conversation[]
+  providerConnections ProviderConnection[]
+  toolUsageLogs       ToolUsageLog[]
+  toolPermissions     ToolPermission[]
+}
+
+// --------------------------------------
+// Memory OS
+// --------------------------------------
+model Memory {
+  id             String    @id @default(uuid())
+  organizationId String
+  workspaceId    String?
+  type           String // e.g. "DOCUMENT", "BRAND_GUIDELINE", "CAMPAIGN_RESULT"
+  title          String
+  content        String
+  summary        String?
+  tags           String[]
+  author         String?
+  confidence     Float?    @default(1.0)
+  importance     Float?    @default(1.0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  expiresAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // workspace   Workspace?   @relation(...) -> Omitted for simplicity unless explicitly required
+}
+
+// --------------------------------------
+// Teams
+// --------------------------------------
+model Team {
+  id             String   @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      TeamMember[]
+}
+
+model TeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  role      String   @default("MEMBER") // TEAM_ADMIN, MEMBER
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
+// --------------------------------------
+// Settings
+// --------------------------------------
+model OrganizationSettings {
+  id             String   @id @default(uuid())
+  organizationId String   @unique
+  branding       Json?
+  billingEmail   String?
+  features       Json? // Feature flags for this org
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model WorkspaceSettings {
+  id           String   @id @default(uuid())
+  workspaceId  String   @unique
+  defaults     Json?
+  integrations Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// --------------------------------------
+// Audit & Notifications
+// --------------------------------------
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  workspaceId    String?
+  actorId        String?
+  action         String
+  resource       String
+  resourceId     String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actor        User?        @relation("ActorLogs", fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// --------------------------------------
+// Workflows
+// --------------------------------------
+model Workflow {
+  id             String   @id @default(uuid())
+  organizationId String
+  workspaceId    String?
+  name           String
+  description    String?
+  status         String   @default("DRAFT") // DRAFT, PUBLISHED, ARCHIVED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  versions     WorkflowVersion[]
+  executions   WorkflowExecution[]
+}
+
+model WorkflowVersion {
+  id         String   @id @default(uuid())
+  workflowId String
+  version    Int
+  nodes      Json     // Array of node configurations
+  edges      Json     // Array of edge connections
+  publishedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  executions WorkflowExecution[]
+
+  @@unique([workflowId, version])
+}
+
+model WorkflowExecution {
+  id                String   @id @default(uuid())
+  workflowId        String
+  workflowVersionId String
+  status            String   @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED, PAUSED
+  startedAt         DateTime?
+  completedAt       DateTime?
+  context           Json?    // Global variables/state
+  logs              Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workflow Workflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  version  WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
+}
+
+// --------------------------------------
+// Agents
+// --------------------------------------
+model Agent {
+  id             String   @id @default(uuid())
+  organizationId String
+  workspaceId    String?
+  name           String
+  description    String?
+  type           String   @default("CUSTOM") // BUILTIN, CUSTOM
+  status         String   @default("ACTIVE") // ACTIVE, ARCHIVED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  versions     AgentVersion[]
+  executions   AgentExecution[]
+  toolPermissions ToolPermission[]
+}
+
+model AgentVersion {
+  id           String   @id @default(uuid())
+  agentId      String
+  version      Int
+  systemPrompt String?  @db.Text
+  tools        String[] // Array of tool IDs
+  config       Json?
+  publishedAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  agent      Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  executions AgentExecution[]
+
+  @@unique([agentId, version])
+}
+
+model AgentExecution {
+  id             String   @id @default(uuid())
+  organizationId String
+  workspaceId    String?
+  agentId        String
+  agentVersionId String
+  status         String   @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED
+  input          Json?
+  output         Json?
+  tokensUsed     Int      @default(0)
+  cost           Float    @default(0.0)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  logs           Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent        Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  version      AgentVersion @relation(fields: [agentVersionId], references: [id], onDelete: Cascade)
+}
+
+// --------------------------------------
+// Conversational Memory
+// --------------------------------------
+model Conversation {
+  id             String   @id @default(uuid())
+  organizationId String
+  workspaceId    String?
+  title          String?
+  status         String   @default("ACTIVE") // ACTIVE, ARCHIVED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace    Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  messages     Message[]
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  role           String   // "system", "user", "assistant"
+  content        String   @db.Text
+  tokensUsed     Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+// --------------------------------------
+// Tools & Providers (Phase 5)
+// --------------------------------------
+
+model ProviderConnection {
+  id             String   @id @default(uuid())
+  organizationId String
+  workspaceId    String?
+  providerName   String   // e.g. "openai", "tavily"
+  encryptedKey   String   @db.Text
+  status         String   @default("ACTIVE") // ACTIVE, INVALID
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace      Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  // A workspace (or org if workspaceId is null) can only have one connection per provider
+  @@unique([organizationId, workspaceId, providerName])
+}
+
+model ToolUsageLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  workspaceId    String?
+  agentId        String?
+  toolName       String   // e.g. "web_search", "generate_image"
+  latencyMs      Int      @default(0)
+  status         String   @default("SUCCESS") // SUCCESS, ERROR
+  error          String?  @db.Text
+  tokensUsed     Int      @default(0)
+  cost           Float    @default(0.0)
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workspace      Workspace?   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model ToolPermission {
+  id             String   @id @default(uuid())
+  workspaceId    String?
+  agentId        String?
+  toolName       String   // The specific tool or category (e.g. "web_search", "*")
+  allowed        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workspace      Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent          Agent?     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, agentId, toolName])
+}

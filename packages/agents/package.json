@@ -1,0 +1,22 @@
+{
+  "name": "@ai-bos/agents",
+  "version": "1.0.0",
+  "description": "AI Agent framework and built-in agents",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-bos/database": "workspace:*",
+    "@ai-bos/shared": "workspace:*",
+    "@ai-bos/tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@ai-bos/config": "workspace:*",
+    "@types/node": "^20.12.12",
+    "rimraf": "^5.0.0",
+    "typescript": "^5.0.0"
+  }
+}

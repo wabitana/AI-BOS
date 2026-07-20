@@ -1,0 +1,24 @@
+{
+  "name": "@ai-bos/memory",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint \"src/**/*.ts*\"",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@ai-bos/core": "workspace:*",
+    "@ai-bos/database": "workspace:*"
+  },
+  "devDependencies": {
+    "@ai-bos/config": "workspace:*",
+    "@ai-bos/shared": "workspace:*",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.0"
+  }
+}
