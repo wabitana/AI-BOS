@@ -65,7 +65,7 @@ export default async function WorkflowHistoryPage({ params }: { params: Promise<
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {workflow.executions.map((exec) => {
+            {workflow.executions.map((exec: any) => {
               const started = exec.startedAt ? new Date(exec.startedAt) : new Date(exec.createdAt);
               const completed = exec.completedAt ? new Date(exec.completedAt) : new Date();
               const duration = Math.round((completed.getTime() - started.getTime()) / 1000);
